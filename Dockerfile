@@ -1,19 +1,28 @@
-FROM node:18
+# Utilise une image node avec build tools
+FROM node:18-bullseye
 
-# Install system dependencies for OpenCV
+# Install OpenCV dependencies
 RUN apt-get update && apt-get install -y \
-  build-essential \
   cmake \
+  build-essential \
   libopencv-dev \
   pkg-config \
+  python3 \
+  python3-pip \
+  git \
   && rm -rf /var/lib/apt/lists/*
 
+# Set workdir
 WORKDIR /usr/src/app
 
+# Copy package.json files
 COPY package*.json ./
+
+# INSTALL node modules (opencv4nodejs va détecter opencv système déjà présent)
 RUN npm install
 
+# Copy all other files
 COPY . .
 
-EXPOSE 10000
-CMD [ "node", "server.js" ]
+# Start server
+CMD ["node", "server.js"]
