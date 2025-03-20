@@ -1,5 +1,5 @@
 # Utilise une image node avec build tools
-FROM node:18-bullseye
+FROM node:18-bookworm
 
 # Install OpenCV dependencies
 RUN apt-get update && apt-get install -y \
