@@ -1,62 +1,60 @@
 const express = require('express');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
 const Jimp = require('jimp');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
-const upload = multer();
 const PORT = process.env.PORT || 10000;
-
 const backgroundsPath = path.join(__dirname, 'backgrounds');
+const upload = multer();
 
-app.get('/add-bg', async (req, res) => {
-  try {
-    const imageUrl = req.query.url;
-    if (!imageUrl) return res.status(400).json({ error: 'Missing image URL' });
+// ➕ Supprimer les pixels blancs par transparence
+async function removeWhiteBackground(image) {
+  image.rgba(true); // active canal alpha
+  const threshold = 240; // tolérance blanche
 
-    const img = await Jimp.read(imageUrl);
+  image.scan(0, 0, image.bitmap.width, image.bitmap.height, function (x, y, idx) {
+    const red = this.bitmap.data[idx + 0];
+    const green = this.bitmap.data[idx + 1];
+    const blue = this.bitmap.data[idx + 2];
+    const alpha = this.bitmap.data[idx + 3];
 
-    const backgrounds = fs.readdirSync(backgroundsPath).filter(file => /\.(jpg|jpeg|png)$/i.test(file));
-    const randomBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
-    const bgPath = path.join(backgroundsPath, randomBg);
-    const background = await Jimp.read(bgPath);
+    // Si le pixel est proche du blanc → on rend transparent
+    if (red > threshold && green > threshold && blue > threshold) {
+      this.bitmap.data[idx + 3] = 0;
+    }
+  });
 
-    background.resize(img.bitmap.width, img.bitmap.height);
-    background.composite(img, 0, 0, { mode: Jimp.BLEND_SOURCE_OVER });
-
-    const buffer = await background.getBufferAsync(Jimp.MIME_PNG);
-    res.set('Content-Type', 'image/png');
-    res.send(buffer);
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  return image;
+}
 
 app.post('/add-bg-from-blob', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image file uploaded' });
 
-    const img = await Jimp.read(req.file.buffer);
+    let img = await Jimp.read(req.file.buffer);
+    img = await removeWhiteBackground(img);
 
     const backgrounds = fs.readdirSync(backgroundsPath).filter(file => /\.(jpg|jpeg|png)$/i.test(file));
     const randomBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
-    const bgPath = path.join(backgroundsPath, randomBg);
-    const background = await Jimp.read(bgPath);
+    const background = await Jimp.read(path.join(backgroundsPath, randomBg));
 
     background.resize(img.bitmap.width, img.bitmap.height);
-    background.composite(img, 0, 0, { mode: Jimp.BLEND_SOURCE_OVER });
+    background.composite(img, 0, 0, {
+      mode: Jimp.BLEND_SOURCE_OVER,
+      opacitySource: 1,
+      opacityDest: 1
+    });
 
-    const buffer = await background.getBufferAsync(Jimp.MIME_PNG);
+    const outputBuffer = await background.getBufferAsync(Jimp.MIME_PNG);
     res.set('Content-Type', 'image/png');
-    res.send(buffer);
-
+    res.send(outputBuffer);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Background API running on port ${PORT}`);
+  console.log(`🎨 Background API running on port ${PORT}`);
 });
