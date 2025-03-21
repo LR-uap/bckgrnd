@@ -37,7 +37,7 @@ async function processImage(img, background) {
   });
 
   // ✅ Agrandir image finale ×2
-  background.resize(background.bitmap.width * 2, background.bitmap.height * 2);
+  //background.resize(background.bitmap.width * 2, background.bitmap.height * 2);
 
   return background.getBufferAsync(Jimp.MIME_PNG);
 }
