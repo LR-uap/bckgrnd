@@ -10,34 +10,66 @@ const PORT = process.env.PORT || 10000;
 const backgroundsPath = path.join(__dirname, 'backgrounds');
 const upload = multer();
 
+// Détecte la bounding box verticale utile de l’image (pixels non transparents)
+function getContentBoundingBox(image) {
+  const { width, height, data } = image.bitmap;
+  let top = height, bottom = 0;
+
+  for (let y = 0; y < height; y++) {
+    let hasContent = false;
+    for (let x = 0; x < width; x++) {
+      const idx = (width * y + x) << 2;
+      const alpha = data[idx + 3];
+      if (alpha > 10) {
+        hasContent = true;
+        break;
+      }
+    }
+    if (hasContent) {
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+
+  return { top, bottom };
+}
+
 // Fonction utilitaire : traitement d’image
 async function processImage(img, background) {
   const { width: targetW, height: targetH } = img.bitmap;
+  const bbox = getContentBoundingBox(img);
+
+  const contentHeight = bbox.bottom - bbox.top + 1;
+  const paddingBottom = targetH - bbox.bottom - 1;
+  const paddingTop = bbox.top;
+
+  if (paddingBottom > paddingTop) {
+    const newCanvas = new Jimp(targetW, targetH, 0x00000000);
+    const cropped = img.clone().crop(0, bbox.top, targetW, contentHeight);
+    const offsetY = paddingBottom - paddingTop;
+    newCanvas.composite(cropped, 0, offsetY);
+    img = newCanvas;
+  }
+
   const ratioBg = background.bitmap.width / background.bitmap.height;
   const ratioTarget = targetW / targetH;
 
-  // ✅ Resize background proportionally (conserve ratio)
+  // Resize background proportionnellement
   if (ratioBg > ratioTarget) {
-    // Fond plus large → adapter hauteur
     background.resize(Jimp.AUTO, targetH);
-    const offsetX = background.bitmap.width - targetW; // aligner à droite
-    background.crop(offsetX, 0, targetW, targetH);     // couper à gauche
+    const offsetX = background.bitmap.width - targetW;
+    background.crop(offsetX, 0, targetW, targetH);
   } else {
-    // Fond plus haut → adapter largeur
     background.resize(targetW, Jimp.AUTO);
-    const offsetY = 0; // top alignment uniquement
-    background.crop(0, offsetY, targetW, targetH);     // couper en bas si besoin
+    background.crop(0, 0, targetW, targetH);
   }
 
-  // ✅ Superposer l’image en haut à droite
+  // Composite image sur le fond
   background.composite(img, 0, 0, {
     mode: Jimp.BLEND_SOURCE_OVER,
     opacitySource: 1,
     opacityDest: 1
   });
-
-  // ✅ Agrandir image finale ×2
-  //background.resize(background.bitmap.width * 2, background.bitmap.height * 2);
 
   return background.getBufferAsync(Jimp.MIME_PNG);
 }
