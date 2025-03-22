@@ -22,12 +22,12 @@ function isVideo(url) {
 async function captureScreenshotFromVideo(url) {
   return new Promise((resolve, reject) => {
     const outputPath = path.join(tmpdir(), `${uuidv4()}.png`);
-    // capture une image à 50% de la durée (~ random simple)
+    const randomSec = Math.floor(Math.random() * 4) + 1; // Random timestamp between 1 and 5 seconds
     ffmpeg(url)
       .on('end', () => resolve(outputPath))
       .on('error', reject)
       .screenshots({
-        timestamps: ['50%'],
+        timestamps: [randomSec.toString()],
         filename: path.basename(outputPath),
         folder: path.dirname(outputPath),
         size: '800x?'
