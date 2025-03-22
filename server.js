@@ -3,6 +3,9 @@ const Jimp = require('jimp');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const ffmpeg = require('fluent-ffmpeg');
+const { tmpdir } = require('os');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -10,11 +13,32 @@ const PORT = process.env.PORT || 10000;
 const backgroundsPath = path.join(__dirname, 'backgrounds');
 const upload = multer();
 
-// Détecte la bounding box verticale utile de l’image (pixels non transparents)
+// Vérifie si l’URL correspond à une vidéo
+function isVideo(url) {
+  return /\.(mp4|webm|gif)$/i.test(url);
+}
+
+// Capture un screenshot aléatoire depuis une vidéo
+async function captureScreenshotFromVideo(url) {
+  return new Promise((resolve, reject) => {
+    const outputPath = path.join(tmpdir(), `${uuidv4()}.png`);
+    // capture une image à 50% de la durée (~ random simple)
+    ffmpeg(url)
+      .on('end', () => resolve(outputPath))
+      .on('error', reject)
+      .screenshots({
+        timestamps: ['50%'],
+        filename: path.basename(outputPath),
+        folder: path.dirname(outputPath),
+        size: '800x?'
+      });
+  });
+}
+
+// Bounding box verticale utile (non transparent)
 function getContentBoundingBox(image) {
   const { width, height, data } = image.bitmap;
   let top = height, bottom = 0;
-
   for (let y = 0; y < height; y++) {
     let hasContent = false;
     for (let x = 0; x < width; x++) {
@@ -30,15 +54,13 @@ function getContentBoundingBox(image) {
       bottom = Math.max(bottom, y);
     }
   }
-
   return { top, bottom };
 }
 
-// Fonction utilitaire : traitement d’image
+// Traitement image avec fond
 async function processImage(img, background) {
   const { width: targetW, height: targetH } = img.bitmap;
   const bbox = getContentBoundingBox(img);
-
   const contentHeight = bbox.bottom - bbox.top + 1;
   const paddingBottom = targetH - bbox.bottom - 1;
   const paddingTop = bbox.top;
@@ -54,7 +76,6 @@ async function processImage(img, background) {
   const ratioBg = background.bitmap.width / background.bitmap.height;
   const ratioTarget = targetW / targetH;
 
-  // Resize background proportionnellement
   if (ratioBg > ratioTarget) {
     background.resize(Jimp.AUTO, targetH);
     const offsetX = background.bitmap.width - targetW;
@@ -64,7 +85,6 @@ async function processImage(img, background) {
     background.crop(0, 0, targetW, targetH);
   }
 
-  // Composite image sur le fond
   background.composite(img, 0, 0, {
     mode: Jimp.BLEND_SOURCE_OVER,
     opacitySource: 1,
@@ -74,41 +94,49 @@ async function processImage(img, background) {
   return background.getBufferAsync(Jimp.MIME_PNG);
 }
 
-// === GET avec image par URL ===
+// === GET URL : video ou image ===
 app.get('/add-bg', async (req, res) => {
   try {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).json({ error: 'Missing image URL' });
 
-    const img = await Jimp.read(imageUrl);
-    const backgrounds = fs.readdirSync(backgroundsPath).filter(file => /\.(jpg|jpeg|png)$/i.test(file));
+    let img;
+    if (isVideo(imageUrl)) {
+      const screenshotPath = await captureScreenshotFromVideo(imageUrl);
+      img = await Jimp.read(screenshotPath);
+      fs.unlink(screenshotPath, () => {}); // nettoyage temporaire
+    } else {
+      img = await Jimp.read(imageUrl);
+    }
+
+    const backgrounds = fs.readdirSync(backgroundsPath).filter(f => /\.(jpg|jpeg|png)$/i.test(f));
     const randomBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
     const background = await Jimp.read(path.join(backgroundsPath, randomBg));
 
     const outputBuffer = await processImage(img, background);
     res.set('Content-Type', 'image/png');
     res.send(outputBuffer);
-
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// === POST avec image par blob (upload direct) ===
+// === POST blob ===
 app.post('/add-bg-from-blob', upload.single('image'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No image file uploaded' });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
     const img = await Jimp.read(req.file.buffer);
-    const backgrounds = fs.readdirSync(backgroundsPath).filter(file => /\.(jpg|jpeg|png)$/i.test(file));
+    const backgrounds = fs.readdirSync(backgroundsPath).filter(f => /\.(jpg|jpeg|png)$/i.test(f));
     const randomBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
     const background = await Jimp.read(path.join(backgroundsPath, randomBg));
 
     const outputBuffer = await processImage(img, background);
     res.set('Content-Type', 'image/png');
     res.send(outputBuffer);
-
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
