@@ -27,7 +27,7 @@ async function captureScreenshotFromVideo(url) {
       .on('end', () => resolve(outputPath))
       .on('error', reject)
       .screenshots({
-        timestamps: ['${randomPercent}%'],
+        timestamps: ['50%'],
         filename: path.basename(outputPath),
         folder: path.dirname(outputPath),
         size: '800x?'
