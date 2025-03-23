@@ -22,7 +22,7 @@ function isVideo(url) {
 async function captureScreenshotFromVideo(url) {
   return new Promise((resolve, reject) => {
     const outputPath = path.join(tmpdir(), `${uuidv4()}.png`);
-    const randomPercent = Math.floor(Math.random() * 9) + 1; // génère 1 à png);
+    const randomPercent = Math.floor(Math.random() * 9) + 1;
     const tmstmp = `${randomPercent}0%`;
     ffmpeg(url)
       .on('end', () => resolve(outputPath))
@@ -143,5 +143,5 @@ app.post('/add-bg-from-blob', upload.single('image'), async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(✅ Background API running on port ${PORT});
+  console.log(`✅ Background API running on port ${PORT}`);
 });
