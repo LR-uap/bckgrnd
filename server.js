@@ -40,11 +40,39 @@ async function captureScreenshotFromVideo(url) {
 // Ajoute un fond aléatoire à une image
 async function processImage(img, background) {
   const { width: targetW, height: targetH } = img.bitmap;
-  
-  // Redimensionne le fond pour correspondre à la taille de l'image
-  background.resize(targetW, Jimp.AUTO);
-  background.crop(0, 0, targetW, targetH);
 
+  // 1. Centering content vertically (optional but keeps previous behavior)
+  const bbox = getContentBoundingBox(img);
+  const contentHeight = bbox.bottom - bbox.top + 1;
+  const paddingBottom = targetH - bbox.bottom - 1;
+  const paddingTop = bbox.top;
+
+  if (paddingBottom > paddingTop) {
+    const newCanvas = new Jimp(targetW, targetH, 0x00000000); // transparent canvas
+    const cropped = img.clone().crop(0, bbox.top, targetW, contentHeight);
+    const offsetY = paddingBottom - paddingTop;
+    newCanvas.composite(cropped, 0, offsetY);
+    img = newCanvas;
+  }
+
+  // 2. Resize background proportionally (cover), then crop from top-right if needed
+  const bgRatio = background.bitmap.width / background.bitmap.height;
+  const targetRatio = targetW / targetH;
+
+  if (bgRatio > targetRatio) {
+    // Background too wide → match height, crop left side
+    background.resize(Jimp.AUTO, targetH);
+    const cropX = background.bitmap.width - targetW;
+    background.crop(cropX, 0, targetW, targetH);
+  } else {
+    // Background too tall → match width, crop bottom side
+    background.resize(targetW, Jimp.AUTO);
+    const cropY = 0; // keep top part
+    const cropHeight = targetH;
+    background.crop(0, cropY, targetW, cropHeight);
+  }
+
+  // 3. Composite image over background
   background.composite(img, 0, 0, {
     mode: Jimp.BLEND_SOURCE_OVER,
     opacitySource: 1,
