@@ -37,6 +37,27 @@ async function captureScreenshotFromVideo(url) {
   });
 }
 
+function getContentBoundingBox(image) {
+  const { width, height, data } = image.bitmap;
+  let top = height, bottom = 0;
+  for (let y = 0; y < height; y++) {
+    let hasContent = false;
+    for (let x = 0; x < width; x++) {
+      const idx = (width * y + x) << 2;
+      const alpha = data[idx + 3];
+      if (alpha > 10) {
+        hasContent = true;
+        break;
+      }
+    }
+    if (hasContent) {
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  return { top, bottom };
+}
+
 // Ajoute un fond aléatoire à une image
 async function processImage(img, background) {
   const { width: targetW, height: targetH } = img.bitmap;
