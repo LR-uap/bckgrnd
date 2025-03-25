@@ -16,13 +16,13 @@ function isVideo(url) {
   return /\.(mp4|webm|gif)$/i.test(url);
 }
 
-async function captureScreenshotFromVideo(url) {
+async function captureScreenshotFromVideoFile(inputPath) {
   return new Promise((resolve, reject) => {
     const outputPath = path.join(tmpdir(), `${uuidv4()}.png`);
     const randomPercent = Math.floor(Math.random() * 9) + 1;
     const timestamp = `${randomPercent}0%`;
 
-    ffmpeg(url)
+    ffmpeg(inputPath)
       .on('end', () => resolve(outputPath))
       .on('error', reject)
       .screenshots({
@@ -133,6 +133,28 @@ app.get('/screenshot', async (req, res) => {
   }
 });
 
+// ✅ Nouvelle route : screenshot depuis un blob vidéo
+app.post('/screenshot-from-blob', upload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No video file uploaded' });
+
+    const tempInputPath = path.join(tmpdir(), `${uuidv4()}.webm`); // ou .mp4/.gif selon ton besoin
+    fs.writeFileSync(tempInputPath, req.file.buffer);
+
+    const screenshotPath = await captureScreenshotFromVideoFile(tempInputPath);
+    const img = await Jimp.read(screenshotPath);
+
+    res.set('Content-Type', 'image/png');
+    res.send(await img.getBufferAsync(Jimp.MIME_PNG));
+
+    fs.unlink(tempInputPath, () => {});
+    fs.unlink(screenshotPath, () => {});
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/add-bg-from-blob', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
@@ -151,15 +173,14 @@ app.post('/add-bg-from-blob', upload.single('image'), async (req, res) => {
   }
 });
 
-// ✅ Nouvelle route : suppression de fond via blob
+// ✅ Suppression du fond via blob
 app.post('/remove-bg-from-blob', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
     const image = await Jimp.read(req.file.buffer);
-    image.background(0x00000000); // transparence
+    image.background(0x00000000);
 
-    // Remplace pixels blancs par transparents
     image.scan(0, 0, image.bitmap.width, image.bitmap.height, function (x, y, idx) {
       const red = this.bitmap.data[idx + 0];
       const green = this.bitmap.data[idx + 1];
